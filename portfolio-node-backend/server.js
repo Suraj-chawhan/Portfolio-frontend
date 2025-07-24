@@ -18,7 +18,7 @@ app.use(express.json());
 
 // Env config fallback (if not using .env file)
 const HUGGINGFACE_API_KEY = process.env.HF_KEY
-const GROQ_API_KEY = process.env.GROQ_KEY
+const GROQ_API_KEY = process.env.GROQ_API_KEY
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 const resend = new Resend(RESEND_API_KEY);
