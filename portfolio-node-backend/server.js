@@ -17,11 +17,8 @@ app.use(cors());
 app.use(express.json());
 
 // Env config fallback (if not using .env file)
-const HUGGINGFACE_API_KEY = process.env.HF_KEY
-const GROQ_API_KEY = process.env.GROQ_API_KEY
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
-const resend = new Resend(RESEND_API_KEY);
+const resend = new Resend(process.env.R_KEY);
 
 // ✅ Email API (via Resend)
 app.post("/api/send", async (req, res) => {
@@ -53,7 +50,7 @@ app.post("/chat", async (req, res) => {
     const document = new Document({ pageContent: fileContent });
 
     const embeddings = new HuggingFaceInferenceEmbeddings({
-      apiKey: HUGGINGFACE_API_KEY,
+      apiKey: process.env.H_KEY,
       model: "sentence-transformers/all-MiniLM-L6-v2",
     });
 
@@ -62,7 +59,7 @@ app.post("/chat", async (req, res) => {
 
     const model = new ChatGroq({
       model: "llama-3.3-70b-versatile",
-      apiKey: GROQ_API_KEY,
+      apiKey: process.env.G_KEY,
     });
 
     const promptTemplate = ChatPromptTemplate.fromTemplate(
