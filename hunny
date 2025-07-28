@@ -1,0 +1,137 @@
+from flask import Flask, request, send_file, jsonify
+from flask_cors import CORS
+from gtts import gTTS
+from io import BytesIO
+from langchain.embeddings import HuggingFaceInferenceAPIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.llms import ChatGroq
+from langchain.prompts import ChatPromptTemplate
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.schema import Document
+from huggingface_hub import InferenceClient
+import requests
+import os
+
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+# -------------------------
+# 🔹 Email sending endpoint
+# -------------------------
+@app.route("/api/send", methods=["POST"])
+def send_email():
+    data = request.get_json()
+    name = data.get("name")
+    email = data.get("email")
+    message = data.get("message")
+
+    if not name or not email or not message:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {os.getenv('R_KEY')}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": "onboarding@resend.dev",
+                "to": "surajchauhan442918@gmail.com",
+                "subject": f"Message from {name}",
+                "text": f"From: {email}\n\n{message}",
+            },
+        )
+        response.raise_for_status()
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        print("❌ Email Error:", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# --------------------------------
+# 🔹 Embedding + Chat endpoint
+# --------------------------------
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.get_json()
+    prompt = data.get("prompt", "")
+
+    if not prompt:
+        return jsonify({"error": "Missing prompt"}), 400
+
+    try:
+        # Load content from file
+        with open("myfile.txt", "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Document
+        doc = Document(page_content=content)
+
+        # Embeddings using HuggingFace
+        embeddings = HuggingFaceInferenceAPIEmbeddings(
+            api_key=os.getenv("H_KEY"),
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+
+        # Vector store (FAISS)
+        vectorstore = FAISS.from_documents([doc], embeddings)
+
+        # Similarity search
+        relevant_docs = vectorstore.similarity_search(prompt, k=1)
+
+        # ChatGroq Model
+        llm = ChatGroq(
+            api_key=os.getenv("G_KEY"),
+            model_name="llama-3-70b-8192"  # use the correct one for your setup
+        )
+
+        # Prompt Template
+        prompt_template = ChatPromptTemplate.from_template(
+            "Answer the following question using the context provided. Be efficient and clear.\n\nContext: {context}\nQuestion: {prompt}"
+        )
+
+        # Chain
+        chain = create_stuff_documents_chain(llm=llm, prompt=prompt_template)
+
+        # Run chain
+        result = chain.invoke({"context": relevant_docs, "prompt": prompt})
+
+        return jsonify({"response": result}), 200
+
+    except Exception as e:
+        print("❌ Chat Error:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# --------------------------------
+# 🔹 Text-to-speech (TTS) endpoint
+# --------------------------------
+@app.route("/ask", methods=["POST", "OPTIONS"])
+def ask():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
+    data = request.get_json()
+    prompt = data.get("prompt", "")
+
+    print("Received prompt for TTS:", prompt)
+
+    tts = gTTS(prompt)
+    mp3_fp = BytesIO()
+    tts.write_to_fp(mp3_fp)
+    mp3_fp.seek(0)
+
+    return send_file(mp3_fp, mimetype="audio/mpeg")
+
+
+# -------------------------
+# 🔹 Run Server
+# -------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
