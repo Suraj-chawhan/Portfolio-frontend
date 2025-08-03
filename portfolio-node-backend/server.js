@@ -1,33 +1,37 @@
 import express from "express";
 import cors from "cors";
-import fs from "fs/promises";
-import path from "path";
 import dotenv from "dotenv";
-import { HuggingFaceInferenceEmbeddings } from "@langchain/community/embeddings/hf";
-import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import morgan from "morgan";
+import { Resend } from "resend";
+import path from "path";
+import fs from "fs/promises";
 import { ChatGroq } from "@langchain/groq";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
 import { Document } from "langchain/document";
-import { Resend } from "resend";
 
 dotenv.config();
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(morgan("dev"));
 
-// Env config fallback (if not using .env file)
+const GROQ_API_KEY = process.env.GROQ_KEY;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
-const resend = new Resend(process.env.R_KEY);
+const resend = new Resend(RESEND_API_KEY);
 
-// ✅ Email API (via Resend)
-app.post("/api/send", async (req, res) => {
+
+
+
+app.post("/send", async (req, res) => {
   const { name, email, message } = req.body;
 
   try {
     await resend.emails.send({
       from: "onboarding@resend.dev",
-      to: "surajchauhan442918@gmail.com",
+      to: "suraj442915@gmail.com",
       subject: `Message from ${name}`,
       text: `From: ${email}\n\n${message}`,
     });
@@ -39,34 +43,100 @@ app.post("/api/send", async (req, res) => {
   }
 });
 
-// ✅ Chat + Embedding API
+
 app.post("/chat", async (req, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt) return res.status(400).send("Missing prompt");
 
-    const filePath = path.join(process.cwd(), "myfile.txt");
-    const fileContent = await fs.readFile(filePath, "utf-8");
-    const document = new Document({ pageContent: fileContent });
+    const baseDocs = [
+      new Document({
+        pageContent: `
+Name: Suraj Chawhan
+Email: surajchauhan442918@gmail.com
+Phone: 7840900295
+LinkedIn: https://www.linkedin.com/in/suraj-chawhan
+GitHub: https://www.github.com/Suraj-chawhan
+        `.trim(),
+      }),
+      new Document({
+        pageContent: `
+Summary:
+Aspiring web and mobile developer focused on building user-centric applications using modern tools like React, Next.js, and Firebase. Strong interest in full-stack development and scalable UI/UX design.
+        `.trim(),
+      }),
+      new Document({
+        pageContent: `
+Skills:
+Languages: JavaScript, TypeScript, Python
+Frameworks and Libraries: React, Next.js, Tailwind CSS, Node.js, Express
+Databases: Firebase, MongoDB
+Tools: Git, GitHub, Postman, VS Code
+Concepts: REST APIs, Authentication, Responsive Design, Cloud Functions
+        `.trim(),
+      }),
+      new Document({
+        pageContent: `
+Experience:
+Role: Frontend Developer
+Company: Soven (Internship)
+Duration: 2 months
+Details:
+- Built reusable UI components using React and Tailwind CSS
+- Integrated frontend with backend APIs
+- Worked in a team to deliver responsive and accessible features
+- Collaborated in agile sprint cycles
+        `.trim(),
+      }),
+      new Document({
+        pageContent: `
+Projects:
+Spotify Clone:
+Tech Stack: Next.js, Tailwind CSS, Supabase, PostgreSQL
+Description:
+- Built authentication flow with Supabase for login, registration, and role-based access
+- Designed and implemented a custom audio player
+- GitHub: [your repo link]
 
-    const embeddings = new HuggingFaceInferenceEmbeddings({
-      apiKey: process.env.H_KEY,
-      model: "sentence-transformers/all-MiniLM-L6-v2",
-    });
+File Sharing App:
+Tech Stack: Firebase, React, Node.js
+Description:
+- Secure file uploads/downloads with Firebase Storage
+- User auth and history tracking
+- GitHub: [your repo link]
 
-    const vectorStore = await MemoryVectorStore.fromDocuments([document], embeddings);
-    const relevantDocs = await vectorStore.similaritySearch(prompt, 1);
+AI Chatbot with LLM:
+Tech Stack: LangChain, Hugging Face, MemoryVectorStore
+Description:
+- Embedded text file into memory vector store
+- Used LLM with document retrieval for chat
+- GitHub: [your repo link]
+        `.trim(),
+      }),
+      new Document({
+        pageContent: `
+Education:
+Bachelor of Engineering in Computer Science
+University: Sant Gadge Baba Amravati University (SGBAU)
+Expected Graduation: 2026
+Relevant Coursework: Data Structures, Operating Systems, Computer Networks, DBMS
+        `.trim(),
+      }),
+    ];
 
     const model = new ChatGroq({
-      model: "llama-3.3-70b-versatile",
-      apiKey: process.env.G_KEY,
+      model: "llama3-70b-8192", // ✅ Use correct Groq model
+      apiKey: GROQ_API_KEY,
     });
 
-    const promptTemplate = ChatPromptTemplate.fromTemplate(
-      `Answer the following question using the context provided. Use efficient and minimal words.
-Context: {context}
-Question: {prompt}`
-    );
+    const promptTemplate = ChatPromptTemplate.fromTemplate(`
+You are a helpful AI assistant. Use the provided resume context to answer the user's question.
+Context:
+{context}
+
+Question:
+{prompt}
+    `.trim());
 
     const chain = await createStuffDocumentsChain({
       llm: model,
@@ -74,18 +144,17 @@ Question: {prompt}`
     });
 
     const answer = await chain.invoke({
-      context: relevantDocs,
+      context: baseDocs,
       prompt,
     });
 
-    res.send(answer);
+    res.json({ output: answer?.text ?? "No answer generated" });
   } catch (err) {
     console.error("❌ API Error:", err);
     res.status(500).send("Internal Server Error");
   }
 });
 
-// ✅ Run Server
 app.listen(4000, () => {
   console.log("🚀 Server running at http://localhost:4000");
 });
