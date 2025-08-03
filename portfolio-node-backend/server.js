@@ -125,7 +125,7 @@ Relevant Coursework: Data Structures, Operating Systems, Computer Networks, DBMS
     ];
 
     const model = new ChatGroq({
-      model: "llama3-70b-8192", // ✅ Use correct Groq model
+      model: "llama-3.3-70b-versatile", // ✅ Use correct Groq model
       apiKey: GROQ_API_KEY,
     });
 
@@ -148,7 +148,7 @@ Question:
       prompt,
     });
 
-    res.json({ output: answer?.text ?? "No answer generated" });
+    res.json({ output: answer || "No answer generated" });
   } catch (err) {
     console.error("❌ API Error:", err);
     res.status(500).send("Internal Server Error");
